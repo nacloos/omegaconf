@@ -20,6 +20,11 @@ class ANTLRCommand(Command):  # type: ignore  # pragma: no cover
     user_options: List[str] = []
 
     def run(self) -> None:
+        return
+
+        # TODO Nathan: the code below generate some error when pip installing, skip it and copy paste the generated
+        # parser and lexer manually in /grammer/gen
+
         """Run command."""
         build_dir = Path(__file__).parent.absolute()
         project_root = build_dir.parent
