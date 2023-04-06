@@ -464,6 +464,28 @@ class Container(Box):
 
             return root, key
 
+    def _resolve_key_and_root_hierarchically(self, key: str) -> Tuple["Container", str]:
+        """
+        Discard the dots and go up the hierarchy to find the closest root containing key.
+        """
+        # discard leading dots in key
+        while key[0] == ".":
+            key = key[1:]
+
+        # e.g. key = '..X.Y' => base_key = 'X'
+        base_key = key.split(".")[0]
+
+        root: Optional[Container] = self
+        while True:
+            assert root is not None
+            if base_key in root:
+                break
+            root = root._get_parent_container()
+            if root is None:
+                raise ConfigKeyError(f"Error resolving key '{key}'")
+
+        return root, key
+
     def _select_impl(
         self,
         key: str,
@@ -654,7 +676,9 @@ class Container(Box):
     ) -> "Node":
         """A node interpolation is of the form `${foo.bar}`"""
         try:
-            root_node, inter_key = self._resolve_key_and_root(inter_key)
+            # Nathan: resolve hierarchically instead of using dots
+            # root_node, inter_key = self._resolve_key_and_root(inter_key)
+            root_node, inter_key = self._resolve_key_and_root_hierarchically(inter_key)
         except ConfigKeyError as exc:
             raise InterpolationKeyError(
                 f"ConfigKeyError while resolving interpolation: {exc}"
