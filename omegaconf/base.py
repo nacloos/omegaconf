@@ -464,10 +464,25 @@ class Container(Box):
 
             return root, key
 
-    def _resolve_key_and_root_hierarchically(self, key: str) -> Tuple["Container", str]:
+    def _resolve_key_and_root_hierarchically(self, key: str, prev_key: str = None) -> Tuple["Container", str]:
         """
         Discard the dots and go up the hierarchy to find the closest root containing key.
+        TODO Nathan: use hierarchical interpolation only if key starts with a dot, otherwise can have interpolation to parent node error.
+        e.g.
+        model: ...
+        train:
+            model:
+                _base_: ${model}
         """
+        # return self._resolve_key_and_root(key)
+        # TODO: compatibility
+        # if not key.startswith("."):
+        #     return self._resolve_key_and_root(key)
+
+        from .dictconfig import DictConfig
+
+        # print("Interp", key)
+        orig_key = key
         # discard leading dots in key
         while key[0] == ".":
             key = key[1:]
@@ -476,9 +491,30 @@ class Container(Box):
         base_key = key.split(".")[0]
 
         root: Optional[Container] = self
+
+        if isinstance(root, DictConfig):
+            root_keys = root.keys()  # don't want to call resolve here
+        else:
+            root_keys = {}
+
+        # prevent infinite loop in cases like 'X': '${X}' (X refers to another X higher in the hierarchy)
+        if base_key in root_keys:
+            val = root._get_node(base_key)._value()
+            if isinstance(val, str) and '${'+orig_key+'}' in val:
+                # print("Same name interpolation detected: key", key, root)
+                # same name interpolation detected, pass to the next level directly
+                root = root._get_parent_container()
+
+        # TODO: temporary fix to prevent interpolation to parent node in cases like 'model': {'_base_': '${model}'}
+        if '_base_' in root_keys:
+            full_key = root._get_full_key('_base_')  # e.g. model._base_
+            if base_key in full_key.split("."):
+                # print("Same name _base_ interpolation detected: key", key)
+                root = root._get_parent_container()._get_parent_container()
+
         while True:
             assert root is not None
-            if base_key in root:
+            if isinstance(root, DictConfig) and base_key in root:
                 break
             root = root._get_parent_container()
             if root is None:
@@ -667,7 +703,7 @@ class Container(Box):
         while parent is not None:
             if parent is target:
                 raise InterpolationResolutionError(
-                    "Interpolation to parent node detected"
+                    f"Interpolation to parent node detected"
                 )
             parent = parent._get_parent()
 
