@@ -490,6 +490,10 @@ class Container(Box):
         # e.g. key = '..X.Y' => base_key = 'X'
         base_key = key.split(".")[0]
 
+        if str.isdigit(base_key):
+            # TODO: don't handle list int index
+            return self._resolve_key_and_root(key)
+
         root: Optional[Container] = self
 
         if isinstance(root, DictConfig):
@@ -514,6 +518,9 @@ class Container(Box):
 
         while True:
             assert root is not None
+            # if isinstance(root, DictConfig):
+            #     print(base_key, root.keys())
+
             if isinstance(root, DictConfig) and base_key in root:
                 break
             root = root._get_parent_container()
@@ -763,6 +770,57 @@ class Container(Box):
                 f"Unsupported interpolation type {inter_type}"
             )
 
+    def _maybe_resolve_python(self, node):
+        from omegaconf import ValueNode
+        if not isinstance(node, ValueNode):
+            return node
+
+        value = node._value()
+        if not isinstance(value, str) or node._get_flag("readonly"):
+            return node
+
+        import re
+        import inspect
+
+        keyword = 'python'
+        multiline = '.*?'
+        pattern = r'\{\{' + keyword + r':(' + multiline + r')\}\}'
+        pattern = re.compile(pattern, re.DOTALL)  # DOTALL: '.' also matches newline char
+
+        environment = {}
+
+        def python_to_string(match):
+            code = match.groups()[0]
+            # remove leading whitespaces
+            code = inspect.cleandoc(code)
+
+            environment['_out_'] = ""  # by default return nothing
+            # https://docs.python.org/3/library/functions.html#exec
+            # exec(code, environment)
+            # exec can modify the value of _out_
+            # out = environment['_out_']
+
+            out = eval(code, environment)
+
+            print(f"Exec: {code}")
+            print(f"Out: {out}")
+            return out
+
+        # TODO: sub don't work with lists (only str)
+        # value = re.sub(pattern, python_to_string, value)
+        res = re.match(pattern, value)
+        if res is not None:
+            value = python_to_string(res)
+            if isinstance(value, list):
+                from omegaconf import ListConfig
+                node = ListConfig(value)
+            elif isinstance(value, dict):
+                from omegaconf import DictConfig
+                node = DictConfig(value)
+            else:
+                node._set_value(value)
+        return node
+
     def _maybe_resolve_interpolation(
         self,
         parent: Optional["Container"],
@@ -771,12 +829,14 @@ class Container(Box):
         throw_on_resolution_failure: bool,
         memo: Optional[Set[int]] = None,
     ) -> Optional[Node]:
+        # TODO: temporarily parse python code here
         value_kind = get_value_kind(value)
         if value_kind != ValueKind.INTERPOLATION:
+            value = self._maybe_resolve_python(value)
             return value
 
         parse_tree = parse(_get_value(value))
-        return self._resolve_interpolation_from_parse_tree(
+        value = self._resolve_interpolation_from_parse_tree(
             parent=parent,
             value=value,
             key=key,
@@ -784,6 +844,8 @@ class Container(Box):
             throw_on_resolution_failure=throw_on_resolution_failure,
             memo=memo if memo is not None else set(),
         )
+        value = self._maybe_resolve_python(value)
+        return value
 
     def resolve_parse_tree(
         self,
