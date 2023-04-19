@@ -770,12 +770,13 @@ class Container(Box):
                 f"Unsupported interpolation type {inter_type}"
             )
 
-    def _maybe_resolve_python(self, node):
+    def _maybe_resolve_python(self, node: Node):
         from omegaconf import ValueNode
         if not isinstance(node, ValueNode):
             return node
 
         value = node._value()
+        # TODO: sometimes want to modify readonly config node
         if not isinstance(value, str) or node._get_flag("readonly"):
             return node
 
@@ -808,7 +809,8 @@ class Container(Box):
 
         # TODO: sub don't work with lists (only str)
         # value = re.sub(pattern, python_to_string, value)
-        res = re.match(pattern, value)
+        res = re.search(pattern, value)
+
         if res is not None:
             value = python_to_string(res)
             if isinstance(value, list):

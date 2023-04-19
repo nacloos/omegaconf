@@ -57,3 +57,25 @@ def test_omegaconf_python():
         print(k, v)
     # print(OmegaConf.to_yaml(cfg))
     # print(parse_python(cfg["v"]))
+
+
+def test_omegaconf_python_dict():
+    cfg = OmegaConf.create({
+        "n": 3,
+        "objects": "{{python: \
+            {f'o{i}': f'object{i}'  for i in range(${n})} \
+        }}"
+    })
+    OmegaConf.resolve(cfg)
+    print(cfg.objects)
+
+
+def test_omegaconf_python_case2():
+    cfg = OmegaConf.create({
+        "model": {
+            "size": 20,
+            "beta": "'{{python: ${size}+2}}'"  # need to use re.search and not re.match
+        }
+    })
+    OmegaConf.resolve(cfg)
+    print(cfg.model.beta)
